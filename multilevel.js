@@ -1,22 +1,36 @@
 const MLT = {
   SCOPE: "multilevel-tokens",
   SETTING_TINT_COLOR: "tintcolor",
+  SETTING_HIGHLIGHT_TINT_COLOR: "highlighttintcolor",
   SETTING_ANIMATE_TELEPORTS: "animateteleports",
   SETTING_AUTO_TARGET: "autotarget",
   SETTING_AUTO_CHAT_BUBBLE: "autochatbubble",
   DEFAULT_TINT_COLOR: "#808080",
-  TAG_SOURCE: "@source:",
-  TAG_TARGET: "@target:",
-  TAG_IN: "@in:",
-  TAG_OUT: "@out:",
-  TAG_INOUT: "@inout:",
+  DEFAULT_HIGHLIGHT_TINT_COLOR: "#808080",
+  TAG_SOURCE: "source",
+  TAG_TARGET: "target",
+  TAG_IN: "in",
+  TAG_OUT: "out",
+  TAG_INOUT: "inout",
+  TAG_HIGHLIGHT_TEXT:"highlighttext",
+  TAG_HIGHLIGHT_ID:"highlightid",
+  TAG_IDENTIFIER_PREFIX: "@", 
   TAG_LOCAL_PREFIX: "!",
+  TAG_HIGHLIGHT_PREFIX: "#",
   FLAG_SOURCE_SCENE: "sscene",
   FLAG_SOURCE_TOKEN: "stoken",
   FLAG_SOURCE_REGION: "srect",
   FLAG_TARGET_REGION: "trect",
   REPLICATED_UPDATE: "mlt_bypass",
 };
+
+class Tag {
+  constructor(name, value) {
+    this.name = name
+    this.value = value
+    this.isLocal = false
+  }
+}
 
 class MltRequestBatch {
   constructor() {
@@ -63,6 +77,17 @@ class MultilevelTokens {
       default: MLT.DEFAULT_TINT_COLOR,
       onChange: this.refreshAll.bind(this),
     });
+    
+    game.settings.register(MLT.SCOPE, MLT.SETTING_HIGHLIGHT_TINT_COLOR, {
+      name: "Tint color for highlighted zones",
+      hint: "Extra tint color applied over regions. Should be a hex color code.",
+      scope: "world",
+      config: true,
+      type: String,
+      default: MLT.DEFAULT_HIGHLIGHT_TINT_COLOR,
+      onChange: this.refreshAll.bind(this),
+    });
+
     game.settings.register(MLT.SCOPE, MLT.SETTING_AUTO_TARGET, {
       name: "Auto-sync player targets",
       hint: "If checked, targeting or detargeting a token will also target or detarget its clones (or originals). Turn this off if it interferes with things.",
@@ -149,18 +174,25 @@ class MultilevelTokens {
     return activeGamemasters.length > 0 && activeGamemasters[0] === game.user._id;
   }
 
+  _parseTags(text) {
+    if (!text)
+      return []
+    tagid = CONST.TAG_IDENTIFIER_PREFIX
+    regex = RegExp(`${tagid}([^:]*):([^${tagid}]*)`, 'gm')
+    regex.matchAll(text).map(t => new Tag(t[0], t[1]))
+  }
+
   _isTaggedRegion(drawing, tags) {
     return (drawing.type == CONST.DRAWING_TYPES.RECTANGLE ||
             drawing.type == CONST.DRAWING_TYPES.ELLIPSE ||
             drawing.type == CONST.DRAWING_TYPES.POLYGON) &&
         this._isUserGamemaster(drawing.author) &&
-        (tags.constructor === Array
-            ? tags.some(t => drawing.text && drawing.text.startsWith(t))
-            : drawing.text && drawing.text.startsWith(tags));
+        this._parseTags(drawing.text)
+            .some(t => tags.indexOf(t) != -1)
   }
 
   _getRegionTag(drawing, tag) {
-    return this._isTaggedRegion(drawing, tag) ? drawing.text.substring(tag.length) : null;
+    return this._isTaggedRegion(drawing, tag) ? _parseTags(drawing.text).find(f => f.name == tag);
   }
 
   _isReplicatedToken(token) {
@@ -475,6 +507,26 @@ class MultilevelTokens {
         .forEach(([s, t]) => requestBatch.deleteToken(s, t._id));
   }
 
+  _updateHighlightRegions(requestBatch, scene, region) {
+    const tags = this._parseTags(region.text)
+    const highlightIdTag = tags.find(f => f.name == TAG_HIGHLIGHT_PREFIX)
+    const highlightTextTag = tags.find(f => f.name == TAG_HIGHLIGHT_TEXT)
+    if (highlightIdTag) {
+      highlight_drawing = scene.get_embedded_entity(highlightIdTag.value)
+    }
+    else {
+      region.clone
+      highlight_data = {...region}
+      if (highlightTextTag) {
+        highlight_data.text = highlightTextTag.value
+      }
+      highlight_data.fillColor = game.settings.get(MLT_SCOPE, MLT.SETTING_HIGHLIGHT_TINT_COLOR)
+      highlight_data.fillType = CONST.DRAWING_FILLTYPES_SOLID,
+      highlight_data.fillAlpha = 0.3
+      requestBatch.extraAction( f => scene.createEmbeddedEntity(region.name + '_highlight', highlight_data))
+    }
+  }
+
   _execute(requestBatch) {
     // isUndo: true prevents these commands from being undoable themselves.
     const options = {isUndo: true};
@@ -547,9 +599,14 @@ class MultilevelTokens {
         scene.data.tokens
             .filter(this._isReplicatedToken.bind(this))
             .forEach(t => requestBatch.deleteToken(scene, t._id));
+
         scene.data.drawings
             .filter(r => this._isTaggedRegion(r, MLT.TAG_SOURCE))
-            .forEach(r => this._replicateAllFromSourceRegion(requestBatch, scene, r));
+            .forEach(r => 
+              {
+                this._replicateAllFromSourceRegion(requestBatch, scene, r)
+                this._updateHighlightRegions(requestBatch, scene, r) 
+              });
       });
     });
   }
