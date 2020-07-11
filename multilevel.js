@@ -175,13 +175,15 @@ class MultilevelTokens {
   }
 
   _parseTags(text) {
-    console.log("MLT: Parsing tags")
+    MultilevelTokens.log("Parsing tags");
     if (!text)
       return []
 
     tagid = CONST.TAG_IDENTIFIER_PREFIX
     regex = RegExp(`${tagid}([^:]*):([^${tagid}]*)`, 'gm')
-    return regex.matchAll(text).map(t => new Tag(t[0], t[1]))
+    tags = regex.matchAll(text).map(t => new Tag(t[0], t[1]))
+    MultilevelTokens.log(tags)
+    return tags;
   }
 
   _isTaggedRegion(drawing, tags) {
