@@ -56,6 +56,8 @@ In the `Module Settings` menu you can choose whether a teleport to the same scen
 
 * Region identifiers that start with `!` are _scene-local_: they will only match with other regions on the same scene. For example, a region with the label `@in:!bar` will only teleport to a region labeled `@out:!bar` on the same scene, even if another scene also has a region labelled `@out:!bar`. The same behaviour applies to cloned regions. This might be useful if you don't need cross-scene linking, and don't want to worry about making sure you use different identifiers on each scene. Or if you're going to duplicate a scene a whole bunch.
 
+* Highlighing: Regions starting with # will have a second highlight region drawn over them with optinoal text
+
 ## Troubleshooting
 
 * Drawings need to have been _created_ by a user with the `GAMEMASTER` role in order to function as linked regions.
